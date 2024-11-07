@@ -82,7 +82,7 @@ pub(crate) fn process_swap<'a, 'info>(
                         return Err(ProgramError::InvalidArgument);
                     }
                     let result = pool.buy_exact_in(snapshot_slot, amount_in).map_err(|e| {
-                        msg!("Slot {} Encountered error: {}", slot, e);
+                        msg!("Swap failed: {:?}", e);
                         ProgramError::InvalidAccountData
                     })?;
                     if result.base_amount_to_transfer < min_amount_out {
@@ -96,7 +96,7 @@ pub(crate) fn process_swap<'a, 'info>(
                     max_amount_in,
                 } => {
                     let result = pool.buy_exact_out(snapshot_slot, amount_out).map_err(|e| {
-                        msg!("Slot {} Encountered error: {}", slot, e);
+                        msg!("Swap failed: {:?}", e);
                         ProgramError::InvalidAccountData
                     })?;
                     if result.quote_amount_to_transfer > max_amount_in {
@@ -143,7 +143,7 @@ pub(crate) fn process_swap<'a, 'info>(
                         return Err(ProgramError::InvalidArgument);
                     }
                     let result = pool.sell_exact_in(snapshot_slot, amount_in).map_err(|e| {
-                        msg!("Slot {} Encountered error: {}", slot, e);
+                        msg!("Swap failed: {:?}", e);
                         ProgramError::InvalidAccountData
                     })?;
                     if result.base_amount_to_transfer < min_amount_out {
@@ -159,7 +159,7 @@ pub(crate) fn process_swap<'a, 'info>(
                     let result = pool
                         .sell_exact_out(snapshot_slot, amount_out)
                         .map_err(|e| {
-                            msg!("Slot {} Encountered error: {}", slot, e);
+                            msg!("Swap failed: {:?}", e);
                             ProgramError::InvalidAccountData
                         })?;
                     if result.base_amount_to_transfer > max_amount_in {

@@ -3,9 +3,9 @@ use libfuzzer_sys::fuzz_target;
 use plasma_fuzz::*;
 use plasma_state::amm::Amm;
 
-fuzz_target!(|actions: Vec<AmmAction>| {
-    // println!("Starting: {:?}", actions);
-    let mut amm = Amm::new(0, 5, 4, 0);
+fuzz_target!(|actions: (u32, Vec<AmmAction>)| {
+    let (fee, actions) = actions;
+    let mut amm = Amm::new(fee % 26, 5, 4, 0);
     let base = 279_900_000_000_000;
     let quote = 100_000_000_000;
 
@@ -14,6 +14,6 @@ fuzz_target!(|actions: Vec<AmmAction>| {
 
     // fuzzed code goes here
     for action in actions {
-        perform_action(&mut amm, action);
+        perform_amm_action(&mut amm, action);
     }
 });

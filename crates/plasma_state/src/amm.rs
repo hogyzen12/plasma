@@ -2,45 +2,11 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytemuck::{Pod, Zeroable};
 
-use crate::{errors::PlasmaStateError, fixed::I80F48};
+use crate::{errors::PlasmaStateError, fixed::I80F48, Downcast, Upcast};
 
-// This is the largest integer less than u64::MAX that is a multiple of 10000
-pub const FEE_ADJUST_MULITPLIER: u128 = 18446744073709550000;
-pub const FEE_ADJUSTED_BASIS_POINT: u128 = FEE_ADJUST_MULITPLIER / 10000;
+pub const BPS_BASE: u128 = 10000;
 
 use super::SlotWindow;
-
-/// Private trait for safely downcasting between types
-trait Downcast<To> {
-    fn downcast(&self) -> Result<To, PlasmaStateError>;
-}
-
-impl Downcast<u64> for u128 {
-    fn downcast(&self) -> Result<u64, PlasmaStateError> {
-        if *self > u64::MAX as u128 {
-            Err(PlasmaStateError::Overflow)
-        } else {
-            Ok(*self as u64)
-        }
-    }
-}
-
-/// Private trait for upcasting a larger integer type
-trait Upcast<To> {
-    fn upcast(&self) -> To;
-}
-
-impl Upcast<u128> for u64 {
-    fn upcast(&self) -> u128 {
-        *self as u128
-    }
-}
-
-impl Upcast<u128> for u32 {
-    fn upcast(&self) -> u128 {
-        *self as u128
-    }
-}
 
 #[cfg_attr(feature = "borsh", derive(BorshDeserialize, BorshSerialize))]
 #[derive(Debug, Clone, Copy)]
@@ -357,16 +323,9 @@ impl Amm {
     }
 
     pub fn pre_fee_adjust_rounded_down(&self, amount: u128) -> u128 {
-        // Given a large number N
-        // The following integer division:
-        // x * N / (N - ((N * fee) / 100000))
-        // Is approximately equivalent to:
-        // x * (1 - fee / 10000)
-        // We always add 1 to the result after subtracting 1 from the numerator. This is consistent
-        // because it maintains the invariant that post_fee_adjust(pre_fee_adjust(x)) == x
-        let numerator = amount * FEE_ADJUST_MULITPLIER;
-        let denominator =
-            FEE_ADJUST_MULITPLIER - (FEE_ADJUSTED_BASIS_POINT * self.fee_in_bps.upcast());
+        // x * 10000 / (10000 - fee) is approximately equivalent to x * (1 - fee / 10000)
+        let numerator = amount * BPS_BASE;
+        let denominator = BPS_BASE - self.fee_in_bps.upcast();
         return numerator / denominator;
     }
 }
@@ -696,13 +655,11 @@ impl Amm {
             quote_swapped_through_pool,
         ) = if size_on_ask_in_base >= base_out {
             let base_swapped_through_ask = base_out;
-            let quote_swapped_through_ask = self
-                .get_complementary_limit_order_size(
-                    base_swapped_through_ask,
-                    Side::Buy,
-                    TokenType::Base,
-                )
-                .saturating_add(1);
+            let quote_swapped_through_ask = self.get_complementary_limit_order_size(
+                base_swapped_through_ask,
+                Side::Buy,
+                TokenType::Base,
+            );
 
             self.update_pool_reserves_after_buy(
                 quote_swapped_through_ask,

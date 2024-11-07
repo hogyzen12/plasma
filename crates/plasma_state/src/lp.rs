@@ -87,8 +87,8 @@ impl LpPosition {
             0
         };
         self.reward_factor_snapshot = current_reward_factor;
-        self.uncollected_fees += withdrawable_fees as u64;
-        Ok((vested_lp_shares, withdrawable_fees as u64))
+        self.uncollected_fees += withdrawable_fees;
+        Ok((vested_lp_shares, withdrawable_fees))
     }
 }
 
