@@ -1,3 +1,12 @@
+# Plasma
+
+Plasma is a reference implementation of a sandwich-resistant AMM for the Solana blockchain.
+
+The underlying mechanism was originally described in a [post from Umbra Research](https://www.umbraresearch.xyz/writings/sandwich-resistant-amm).
+
+## Licensing
+The primary license for Plasma is the Business Source License 1.1 (BUSL-1.1), which can be found at LICENSE.
+
 ## Getting Started
 
 Make sure you have Rust and Solana installed.
