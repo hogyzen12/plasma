@@ -5,7 +5,7 @@ Plasma is a reference implementation of a sandwich-resistant AMM for the Solana 
 The underlying mechanism was originally described in a [post from Umbra Research](https://www.umbraresearch.xyz/writings/sandwich-resistant-amm).
 
 ## Licensing
-The primary license for Plasma is the Business Source License 1.1 (BUSL-1.1), which can be found at LICENSE.
+The primary license for Plasma is the Business Source License 1.1 (BUSL-1.1), which can be found at [LICENSE](https://github.com/Ellipsis-Labs/plasma/blob/master/LICENSE).
 
 ## Getting Started
 
