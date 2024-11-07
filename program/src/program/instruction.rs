@@ -23,7 +23,7 @@ pub enum PlasmaInstruction {
     #[account(1, name = "log_authority", desc = "Plasma log authority")]
     #[account(2, writable, name = "pool", desc = "This account holds the pool state")]
     #[account(3, signer, name = "trader")]
-    #[account(4, name = "lp_position")]
+    #[account(4, writable, name = "lp_position")]
     #[account(5, writable, name = "base_account", desc = "Trader base token account")]
     #[account(6, writable, name = "quote_account", desc = "Trader quote token account")]
     #[account(7, writable, name = "base_vault", desc = "Base vault PDA, seeds are [b'vault', pool_address, base_mint_address]")]
@@ -36,7 +36,7 @@ pub enum PlasmaInstruction {
     #[account(1, name = "log_authority", desc = "Plasma log authority")]
     #[account(2, writable, name = "pool", desc = "This account holds the pool state")]
     #[account(3, signer, name = "trader")]
-    #[account(4, name = "lp_position")]
+    #[account(4, writable, name = "lp_position")]
     #[account(5, writable, name = "base_account", desc = "Trader base token account")]
     #[account(6, writable, name = "quote_account", desc = "Trader quote token account")]
     #[account(7, writable, name = "base_vault", desc = "Base vault PDA, seeds are [b'vault', pool_address, base_mint_address]")]
@@ -49,7 +49,7 @@ pub enum PlasmaInstruction {
     #[account(1, name = "log_authority", desc = "Plasma log authority")]
     #[account(2, writable, name = "pool", desc = "This account holds the pool state")]
     #[account(3, signer, name = "trader")]
-    #[account(4, name = "lp_position")]
+    #[account(4, writable, name = "lp_position")]
     RenounceLiquidity = 3,
 
     /// Reduce the size of an existing order on the book 

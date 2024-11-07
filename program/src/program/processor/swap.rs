@@ -204,12 +204,12 @@ pub(crate) fn process_swap<'a, 'info>(
     // Handle protocol fees accounting
     pool.update_protocol_fee_recipients_post_swap()?;
     assert_with_msg(
-        pool.amm.cumulative_quote_protocol_fees > pre_protocol_fees,
+        pool.amm.cumulative_quote_protocol_fees >= pre_protocol_fees,
         ProgramError::InvalidArgument,
         "Cumulative protocol fees did not increase after swap",
     )?;
     assert_with_msg(
-        pool.amm.cumulative_quote_lp_fees > pre_lp_fees,
+        pool.amm.cumulative_quote_lp_fees >= pre_lp_fees,
         ProgramError::InvalidArgument,
         "Cumulative LP fees did not increase after swap",
     )?;

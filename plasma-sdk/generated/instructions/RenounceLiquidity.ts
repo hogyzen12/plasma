@@ -33,7 +33,7 @@ export function RenounceLiquidity(
     { pubkey: accounts.logAuthority, isSigner: false, isWritable: false },
     { pubkey: accounts.pool, isSigner: false, isWritable: true },
     { pubkey: accounts.trader, isSigner: true, isWritable: false },
-    { pubkey: accounts.lpPosition, isSigner: false, isWritable: false },
+    { pubkey: accounts.lpPosition, isSigner: false, isWritable: true },
   ]
   const identifier = Buffer.from([3])
   const buffer = Buffer.alloc(1000)

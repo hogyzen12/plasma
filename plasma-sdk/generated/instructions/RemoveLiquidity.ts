@@ -43,7 +43,7 @@ export function RemoveLiquidity(
     { pubkey: accounts.logAuthority, isSigner: false, isWritable: false },
     { pubkey: accounts.pool, isSigner: false, isWritable: true },
     { pubkey: accounts.trader, isSigner: true, isWritable: false },
-    { pubkey: accounts.lpPosition, isSigner: false, isWritable: false },
+    { pubkey: accounts.lpPosition, isSigner: false, isWritable: true },
     { pubkey: accounts.baseAccount, isSigner: false, isWritable: true },
     { pubkey: accounts.quoteAccount, isSigner: false, isWritable: true },
     { pubkey: accounts.baseVault, isSigner: false, isWritable: true },

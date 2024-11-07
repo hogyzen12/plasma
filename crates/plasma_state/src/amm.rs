@@ -87,7 +87,7 @@ pub enum TokenType {
 #[derive(Debug, Copy, Clone, Zeroable, Pod)]
 #[repr(C)]
 pub struct Amm {
-    fee_in_bps: u32,
+    pub fee_in_bps: u32,
     protocol_allocation_in_pct: u32,
     pub lp_vesting_window: u64,
     pub reward_factor: I80F48,
@@ -170,7 +170,6 @@ impl Amm {
 pub struct LimitOrderConfiguration {
     size_in_base: u128,
     size_in_quote: u128,
-    fee_in_quote: u128,
 }
 
 impl LimitOrderConfiguration {
@@ -178,7 +177,6 @@ impl LimitOrderConfiguration {
         Self {
             size_in_base: 0,
             size_in_quote: 0,
-            fee_in_quote: 0,
         }
     }
 }
@@ -197,15 +195,11 @@ impl Amm {
                 let ask = if quote_snapshot * base_reserves > base_snapshot * quote_reserves {
                     let size_in_quote = (quote_snapshot * base_reserves
                         - base_snapshot * quote_reserves)
-                        / (base_snapshot + self.post_fee_adjust_rounded_down(base_snapshot));
-                    let size_in_base = self.post_fee_adjust_rounded_down(
-                        size_in_quote * base_snapshot / quote_snapshot,
-                    );
-                    let fee_in_quote = self.fee_rounded_down(size_in_quote);
+                        / (2 * base_snapshot);
+                    let size_in_base = size_in_quote * base_snapshot / quote_snapshot;
                     LimitOrderConfiguration {
                         size_in_base,
-                        size_in_quote: size_in_quote - fee_in_quote,
-                        fee_in_quote,
+                        size_in_quote,
                     }
                 } else {
                     LimitOrderConfiguration::new_default()
@@ -218,11 +212,9 @@ impl Amm {
                         - quote_snapshot * base_reserves)
                         / (2 * quote_snapshot);
                     let size_in_quote = size_in_base * quote_snapshot / base_snapshot;
-                    let fee_in_quote = self.fee_rounded_down(size_in_quote);
                     LimitOrderConfiguration {
                         size_in_base,
-                        size_in_quote: size_in_quote - fee_in_quote,
-                        fee_in_quote,
+                        size_in_quote,
                     }
                 } else {
                     LimitOrderConfiguration::new_default()
@@ -251,22 +243,19 @@ impl Amm {
         match side {
             Side::Buy => {
                 match input_token_type {
-                    // If `amount` is in base, then the size of the limit order in quote is computed
-                    TokenType::Base => self.pre_fee_adjust_rounded_up(
-                        ((amount * quote_snapshot).saturating_sub(1) / base_snapshot)
-                            .saturating_add(1),
-                    ),
+                    // If `amount` is in base, then the size of the limit order in quote is computed and rounded up
+                    TokenType::Base => ((amount * quote_snapshot).saturating_sub(1)
+                        / base_snapshot)
+                        .saturating_add(1),
                     // If `amount` is in quote, then the size of the limit order in base is computed
-                    TokenType::Quote => {
-                        self.post_fee_adjust_rounded_down(amount * base_snapshot / quote_snapshot)
-                    }
+                    TokenType::Quote => amount * base_snapshot / quote_snapshot,
                 }
             }
             Side::Sell => {
                 match input_token_type {
                     // If `amount` is in base, then the size of the limit order in quote is computed
                     TokenType::Base => amount * quote_snapshot / base_snapshot,
-                    // If `amount` is in quote, then the size of the limit order in base is computed
+                    // If `amount` is in quote, then the size of the limit order in base is computed and rounded up
                     TokenType::Quote => ((amount * base_snapshot).saturating_sub(1)
                         / quote_snapshot)
                         .saturating_add(1),
@@ -330,26 +319,11 @@ impl Amm {
         (lp_fees, protocol_fees)
     }
 
-    pub fn fee_rounded_up(&self, amount: u128) -> u128 {
-        // If amount * fee_in_bps is a multiple of 10000, the fee is exact
-        // Otherwise the fee is rounded up
-        ((amount * self.fee_in_bps.upcast()) + 9999_u128) / 10000_u128
-    }
-
     pub fn fee_rounded_down(&self, amount: u128) -> u128 {
         amount * self.fee_in_bps.upcast() / 10000_u128
     }
 
-    pub fn post_fee_adjust_rounded_down(&self, amount: u128) -> u128 {
-        // We round up the fee in favor of the pool
-        amount.saturating_sub(self.fee_rounded_up(amount))
-    }
-
-    pub fn post_fee_adjust_rounded_up(&self, amount: u128) -> u128 {
-        amount.saturating_sub(self.fee_rounded_down(amount))
-    }
-
-    pub fn pre_fee_adjust_rounded_up(&self, amount: u128) -> u128 {
+    pub fn pre_fee_adjust_rounded_down(&self, amount: u128) -> u128 {
         // Given a large number N
         // The following integer division:
         // x * N / (N - ((N * fee) / 100000))
@@ -360,7 +334,7 @@ impl Amm {
         let numerator = amount * FEE_ADJUST_MULITPLIER;
         let denominator =
             FEE_ADJUST_MULITPLIER - (FEE_ADJUSTED_BASIS_POINT * self.fee_in_bps.upcast());
-        return (numerator.saturating_sub(1) / denominator).saturating_add(1);
+        return numerator / denominator;
     }
 }
 
@@ -547,7 +521,8 @@ impl Amm {
             return Ok(SwapResult::new_empty_with_side(Side::Buy));
         }
 
-        let quote_in: u128 = quote_in.upcast();
+        let quote_fee = self.fee_rounded_down(quote_in.upcast());
+        let quote_in_post_fee: u128 = quote_in.upcast() - quote_fee;
 
         let quote_reserves = self.quote_reserves.upcast();
         let base_reserves = self.base_reserves.upcast();
@@ -556,7 +531,6 @@ impl Amm {
         let LimitOrderConfiguration {
             size_in_base: size_on_ask_in_base,
             size_in_quote: size_on_ask_in_quote,
-            fee_in_quote: limit_order_fee_in_quote,
         } = self.get_limit_order_size_in_base_and_quote(Side::Buy);
 
         let (
@@ -564,10 +538,13 @@ impl Amm {
             base_swapped_through_ask,
             quote_swapped_through_pool,
             base_swapped_through_pool,
-        ) = if size_on_ask_in_quote + limit_order_fee_in_quote >= quote_in {
-            let quote_swapped_through_ask = self.post_fee_adjust_rounded_up(quote_in);
-            let base_swapped_through_ask =
-                self.get_complementary_limit_order_size(quote_in, Side::Buy, TokenType::Quote);
+        ) = if size_on_ask_in_quote >= quote_in_post_fee {
+            let quote_swapped_through_ask = quote_in_post_fee;
+            let base_swapped_through_ask = self.get_complementary_limit_order_size(
+                quote_in_post_fee,
+                Side::Buy,
+                TokenType::Quote,
+            );
 
             self.update_pool_reserves_after_buy(
                 quote_swapped_through_ask,
@@ -591,12 +568,7 @@ impl Amm {
                 base_swapped_through_ask,
             )?;
 
-            let quote_swapped_through_ask_including_fee =
-                size_on_ask_in_quote + limit_order_fee_in_quote;
-            let quote_swapped_through_pool_including_fee =
-                quote_in - quote_swapped_through_ask_including_fee;
-            let quote_swapped_through_pool =
-                self.post_fee_adjust_rounded_up(quote_swapped_through_pool_including_fee);
+            let quote_swapped_through_pool = quote_in_post_fee - size_on_ask_in_quote;
             let base_swapped_through_pool =
                 self.get_base_out_from_quote_in(quote_swapped_through_pool);
 
@@ -614,7 +586,6 @@ impl Amm {
         };
 
         let base_out = base_swapped_through_ask + base_swapped_through_pool;
-        let quote_fee = quote_in - quote_swapped_through_ask - quote_swapped_through_pool;
 
         let updated_base_reserves = self.base_reserves.upcast();
         let updated_quote_reserves = self.quote_reserves.upcast();
@@ -622,7 +593,7 @@ impl Amm {
         let swap_result = SwapResult {
             side: Side::Buy,
             base_amount_to_transfer: base_out.downcast()?,
-            quote_amount_to_transfer: quote_in.downcast()?,
+            quote_amount_to_transfer: quote_in,
             base_matched_as_limit_order: base_swapped_through_ask.downcast()?,
             quote_matched_as_limit_order: quote_swapped_through_ask.downcast()?,
             base_matched_as_swap: base_swapped_through_pool.downcast()?,
@@ -645,6 +616,9 @@ impl Amm {
                 + swap_result.quote_matched_as_swap
                 + swap_result.fee_in_quote
         {
+            return Err(PlasmaStateError::SwapAmountMismatch);
+        }
+        if swap_result.quote_amount_to_transfer != quote_in {
             return Err(PlasmaStateError::SwapAmountMismatch);
         }
 
@@ -672,8 +646,6 @@ impl Amm {
             return Ok(SwapResult::new_empty_with_side(Side::Buy));
         }
 
-        let mut quote_fee = 0;
-
         let base_out = base_out.upcast();
         let quote_reserves = self.quote_reserves.upcast();
         let base_reserves = self.base_reserves.upcast();
@@ -682,7 +654,6 @@ impl Amm {
         let LimitOrderConfiguration {
             size_in_base: size_on_ask_in_base,
             size_in_quote: size_on_ask_in_quote,
-            fee_in_quote: limit_order_fee_in_quote,
         } = self.get_limit_order_size_in_base_and_quote(Side::Buy);
 
         let (
@@ -692,15 +663,13 @@ impl Amm {
             quote_swapped_through_pool,
         ) = if size_on_ask_in_base >= base_out {
             let base_swapped_through_ask = base_out;
-            let quote_swapped_through_ask_including_fee = self.get_complementary_limit_order_size(
-                base_swapped_through_ask,
-                Side::Buy,
-                TokenType::Base,
-            );
-
-            let quote_swapped_through_ask =
-                self.post_fee_adjust_rounded_up(quote_swapped_through_ask_including_fee);
-            quote_fee += quote_swapped_through_ask_including_fee - quote_swapped_through_ask;
+            let quote_swapped_through_ask = self
+                .get_complementary_limit_order_size(
+                    base_swapped_through_ask,
+                    Side::Buy,
+                    TokenType::Base,
+                )
+                .saturating_add(1);
 
             self.update_pool_reserves_after_buy(
                 quote_swapped_through_ask,
@@ -724,16 +693,9 @@ impl Amm {
                 base_swapped_through_ask,
             )?;
 
-            quote_fee += limit_order_fee_in_quote;
-
             let base_swapped_through_pool = base_out - size_on_ask_in_base;
             let quote_swapped_through_pool =
                 self.get_quote_in_from_base_out(base_swapped_through_pool)?;
-
-            let quote_swapped_through_pool_pre_fee =
-                self.pre_fee_adjust_rounded_up(quote_swapped_through_pool);
-
-            quote_fee += quote_swapped_through_pool_pre_fee - quote_swapped_through_pool;
 
             self.update_pool_reserves_after_buy(
                 quote_swapped_through_pool,
@@ -748,7 +710,10 @@ impl Amm {
             )
         };
 
-        let quote_in = quote_swapped_through_ask + quote_swapped_through_pool + quote_fee;
+        let quote_post_fee = quote_swapped_through_ask + quote_swapped_through_pool;
+        let quote_in = self.pre_fee_adjust_rounded_down(quote_post_fee);
+
+        let quote_fee = quote_in - quote_post_fee;
 
         let updated_base_reserves = self.base_reserves.upcast();
         let updated_quote_reserves = self.quote_reserves.upcast();
@@ -766,7 +731,6 @@ impl Amm {
 
         let k_end = updated_base_reserves * updated_quote_reserves;
         if k_start > k_end {
-            println!("{:?}", swap_result);
             return Err(PlasmaStateError::InvariantViolation(k_start, k_end));
         }
 
@@ -817,7 +781,6 @@ impl Amm {
         let LimitOrderConfiguration {
             size_in_base: size_on_bid_in_base,
             size_in_quote: size_on_bid_in_quote,
-            fee_in_quote: limit_order_fee_in_quote,
         } = self.get_limit_order_size_in_base_and_quote(Side::Sell);
 
         let (
@@ -827,20 +790,17 @@ impl Amm {
             quote_swapped_through_pool,
         ) = if size_on_bid_in_base >= base_in {
             let base_swapped_through_bid = base_in;
-            let quote_swapped_through_bid_including_fee = self.get_complementary_limit_order_size(
+            let mut quote_swapped_through_bid = self.get_complementary_limit_order_size(
                 base_swapped_through_bid,
                 Side::Sell,
                 TokenType::Base,
             );
-            let quote_swapped_through_bid =
-                self.post_fee_adjust_rounded_up(quote_swapped_through_bid_including_fee);
-
-            quote_fee += quote_swapped_through_bid_including_fee - quote_swapped_through_bid;
-
+            quote_fee += self.fee_rounded_down(quote_swapped_through_bid);
             self.update_pool_reserves_after_sell(
                 base_swapped_through_bid,
-                quote_swapped_through_bid_including_fee,
+                quote_swapped_through_bid,
             )?;
+            quote_swapped_through_bid -= quote_fee;
 
             let base_swapped_through_pool = 0_u128;
             let quote_swapped_through_pool = 0_u128;
@@ -852,29 +812,25 @@ impl Amm {
             )
         } else {
             let base_swapped_through_bid = size_on_bid_in_base;
-            let quote_swapped_through_bid = size_on_bid_in_quote;
+            let mut quote_swapped_through_bid = size_on_bid_in_quote;
 
-            let quote_swapped_through_bid_including_fee =
-                size_on_bid_in_quote + limit_order_fee_in_quote;
-
+            quote_fee += self.fee_rounded_down(quote_swapped_through_bid);
             self.update_pool_reserves_after_sell(
                 base_swapped_through_bid,
-                quote_swapped_through_bid_including_fee,
+                quote_swapped_through_bid,
             )?;
-
-            quote_fee += limit_order_fee_in_quote;
+            quote_swapped_through_bid -= quote_fee;
 
             let base_swapped_through_pool = base_in - size_on_bid_in_base;
-            let quote_swapped_through_pool_pre_fee =
+            let mut quote_swapped_through_pool =
                 self.get_quote_out_from_base_in(base_swapped_through_pool);
-            let quote_swapped_through_pool =
-                self.post_fee_adjust_rounded_up(quote_swapped_through_pool_pre_fee);
-
             self.update_pool_reserves_after_sell(
                 base_swapped_through_pool,
-                quote_swapped_through_pool_pre_fee,
+                quote_swapped_through_pool,
             )?;
-            quote_fee += quote_swapped_through_pool_pre_fee - quote_swapped_through_pool;
+            let swap_fee = self.fee_rounded_down(quote_swapped_through_pool);
+            quote_fee += swap_fee;
+            quote_swapped_through_pool -= swap_fee;
 
             (
                 base_swapped_through_bid,
@@ -937,7 +893,8 @@ impl Amm {
         }
 
         let quote_out = quote_out.upcast();
-        let mut quote_fee = 0;
+        let quote_out_pre_fee = self.pre_fee_adjust_rounded_down(quote_out);
+        let quote_fee = quote_out_pre_fee - quote_out;
 
         if self.quote_reserves < quote_out.downcast()? {
             return Err(PlasmaStateError::SwapExactOutTooLarge);
@@ -950,7 +907,6 @@ impl Amm {
         let LimitOrderConfiguration {
             size_in_base: size_on_bid_in_base,
             size_in_quote: size_on_bid_in_quote,
-            fee_in_quote: limit_order_fee_in_quote,
         } = self.get_limit_order_size_in_base_and_quote(Side::Sell);
 
         let (
@@ -959,21 +915,17 @@ impl Amm {
             quote_swapped_through_pool,
             base_swapped_through_pool,
         ) = if size_on_bid_in_quote >= quote_out {
-            let quote_swapped_through_bid = quote_out;
-            let quote_swapped_through_bid_including_fee =
-                self.pre_fee_adjust_rounded_up(quote_swapped_through_bid);
+            let quote_swapped_through_bid = quote_out_pre_fee;
             let base_swapped_through_bid = self.get_complementary_limit_order_size(
-                quote_swapped_through_bid_including_fee,
+                quote_swapped_through_bid,
                 Side::Sell,
                 TokenType::Quote,
             );
 
             self.update_pool_reserves_after_sell(
                 base_swapped_through_bid,
-                quote_swapped_through_bid_including_fee,
+                quote_swapped_through_bid,
             )?;
-
-            quote_fee += quote_swapped_through_bid_including_fee - quote_swapped_through_bid;
 
             let quote_swapped_through_pool = 0_u128;
             let base_swapped_through_pool = 0_u128;
@@ -987,27 +939,19 @@ impl Amm {
             let base_swapped_through_bid = size_on_bid_in_base;
             let quote_swapped_through_bid = size_on_bid_in_quote;
 
-            let quote_swapped_through_bid_including_fee =
-                size_on_bid_in_quote + limit_order_fee_in_quote;
-
             self.update_pool_reserves_after_sell(
                 base_swapped_through_bid,
-                quote_swapped_through_bid_including_fee,
+                quote_swapped_through_bid,
             )?;
 
-            quote_fee += limit_order_fee_in_quote;
-
-            let quote_swapped_through_pool = quote_out - quote_swapped_through_bid;
-            let quote_swapped_through_pool_pre_fee =
-                self.pre_fee_adjust_rounded_up(quote_swapped_through_pool);
+            let quote_swapped_through_pool = quote_out_pre_fee - quote_swapped_through_bid;
             let base_swapped_through_pool =
-                self.get_base_in_from_quote_out(quote_swapped_through_pool_pre_fee)?;
+                self.get_base_in_from_quote_out(quote_swapped_through_pool)?;
 
             self.update_pool_reserves_after_sell(
                 base_swapped_through_pool,
-                quote_swapped_through_pool_pre_fee,
+                quote_swapped_through_pool,
             )?;
-            quote_fee += quote_swapped_through_pool_pre_fee - quote_swapped_through_pool;
 
             (
                 quote_swapped_through_bid,
@@ -1045,6 +989,7 @@ impl Amm {
         }
         if swap_result.quote_amount_to_transfer
             != swap_result.quote_matched_as_limit_order + swap_result.quote_matched_as_swap
+                - swap_result.fee_in_quote
         {
             return Err(PlasmaStateError::SwapAmountMismatch);
         }
@@ -1053,38 +998,5 @@ impl Amm {
         self.apply_fees(quote_fee)?;
 
         Ok(swap_result)
-    }
-}
-
-#[cfg(test)]
-mod fee_tests {
-    use rand::{rngs::StdRng, Rng, SeedableRng};
-
-    use crate::amm::Upcast;
-
-    #[test]
-    fn test_fee_adjust() {
-        for fee in [13, 42, 39, 25, 50, 1, 2, 99] {
-            let pool = super::Amm::new(fee, 0, 4, 0);
-            let mut r = StdRng::seed_from_u64(42);
-            for i in 0..100000 {
-                let amount = (r.gen_range(0, u32::MAX) as u64).upcast();
-                let post_fee = pool.post_fee_adjust_rounded_down(amount);
-                let pre_fee = pool.pre_fee_adjust_rounded_up(post_fee);
-
-                if amount != pre_fee {
-                    assert!(
-                        pool.post_fee_adjust_rounded_down(pre_fee) == post_fee,
-                        "post(Pre-fee amount) is greater than post(amount), {}: {}",
-                        i,
-                        amount
-                    );
-                }
-                assert_eq!(
-                    pool.post_fee_adjust_rounded_down(pool.pre_fee_adjust_rounded_up(amount)),
-                    amount
-                );
-            }
-        }
     }
 }

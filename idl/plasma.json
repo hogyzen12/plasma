@@ -122,7 +122,7 @@
         },
         {
           "name": "lpPosition",
-          "isMut": false,
+          "isMut": true,
           "isSigner": false
         },
         {
@@ -213,7 +213,7 @@
         },
         {
           "name": "lpPosition",
-          "isMut": false,
+          "isMut": true,
           "isSigner": false
         },
         {
@@ -304,7 +304,7 @@
         },
         {
           "name": "lpPosition",
-          "isMut": false,
+          "isMut": true,
           "isSigner": false
         }
       ],

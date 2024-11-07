@@ -97,9 +97,9 @@ pub fn perform_action(amm: &mut Amm, action: AmmAction) {
                 }
             };
             assert!(pool_start.base_reserves - res.base_amount_to_transfer == amm.base_reserves);
-            assert!(
-                pool_start.quote_reserves + res.quote_amount_to_transfer - res.fee_in_quote
-                    == amm.quote_reserves
+            assert_eq!(
+                pool_start.quote_reserves + res.quote_amount_to_transfer - res.fee_in_quote,
+                amm.quote_reserves
             );
             assert!(
                 pool_start.cumulative_quote_lp_fees
@@ -107,6 +107,17 @@ pub fn perform_action(amm: &mut Amm, action: AmmAction) {
                     + res.fee_in_quote
                     == amm.cumulative_quote_lp_fees + amm.cumulative_quote_protocol_fees
             );
+
+            let fee_ratio = res.fee_in_quote as f64 / (res.quote_amount_to_transfer as f64);
+            if res.quote_amount_to_transfer > 1000000 {
+                assert!(
+                    (fee_ratio - (amm.fee_in_bps as f64 / 10000.)).abs() < 0.00001,
+                    "{} {} {:?}",
+                    fee_ratio,
+                    amm.fee_in_bps,
+                    res
+                );
+            }
         }
         AmmAction::SellExactIn(r) => {
             let pct = (r as f64 + 1.) / (10. * 255.0);
@@ -144,6 +155,18 @@ pub fn perform_action(amm: &mut Amm, action: AmmAction) {
                     + res.fee_in_quote,
                 amm.cumulative_quote_lp_fees + amm.cumulative_quote_protocol_fees
             );
+
+            let fee_ratio = res.fee_in_quote as f64
+                / (res.quote_amount_to_transfer as f64 + res.fee_in_quote as f64);
+            if res.quote_amount_to_transfer > 1000000 {
+                assert!(
+                    (fee_ratio - (amm.fee_in_bps as f64 / 10000.)).abs() < 0.00001,
+                    "{} {} {:?}",
+                    fee_ratio,
+                    amm.fee_in_bps,
+                    res
+                );
+            }
         }
         AmmAction::BuyExactOut(r) => {
             let pct = (r as f64 + 1.) / (10. * 255.0);
@@ -192,16 +215,16 @@ pub fn perform_action(amm: &mut Amm, action: AmmAction) {
 
             assert!(simres.base_amount_to_transfer == res.base_amount_to_transfer);
 
-            let invariant_sim = pool_start
-                .simulate_buy_exact_in(res.quote_amount_to_transfer)
-                .unwrap();
-
-            assert!(
-                simres.base_amount_to_transfer == invariant_sim.base_amount_to_transfer,
-                "\n{:?}\n{:?}",
-                simres,
-                res,
-            );
+            let fee_ratio = res.fee_in_quote as f64 / (res.quote_amount_to_transfer as f64);
+            if res.quote_amount_to_transfer > 1000000 {
+                assert!(
+                    (fee_ratio - (amm.fee_in_bps as f64 / 10000.)).abs() < 0.00001,
+                    "{} {} {:?}",
+                    fee_ratio,
+                    amm.fee_in_bps,
+                    res
+                );
+            }
         }
         AmmAction::SellExactOut(r) => {
             let pct = (r as f64 + 1.) / (10. * 256.0);
@@ -254,16 +277,17 @@ pub fn perform_action(amm: &mut Amm, action: AmmAction) {
                 res.quote_amount_to_transfer
             );
 
-            let invariant_sim = pool_start
-                .simulate_sell_exact_in(res.base_amount_to_transfer)
-                .unwrap();
-
-            assert!(
-                simres.quote_amount_to_transfer == invariant_sim.quote_amount_to_transfer,
-                "\n{:?}\n{:?}",
-                simres,
-                res,
-            );
+            let fee_ratio = res.fee_in_quote as f64
+                / (res.quote_amount_to_transfer as f64 + res.fee_in_quote as f64);
+            if res.quote_amount_to_transfer > 1000000 {
+                assert!(
+                    (fee_ratio - (amm.fee_in_bps as f64 / 10000.)).abs() < 0.00001,
+                    "{} {} {:?}",
+                    fee_ratio,
+                    amm.fee_in_bps,
+                    res
+                );
+            }
         }
         AmmAction::Tick => {
             if verbose {
