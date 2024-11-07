@@ -1,6 +1,7 @@
 use arbitrary::Arbitrary;
 use plasma_state::amm::Amm;
 use plasma_state::errors::*;
+use plasma_state::lp::LpPosition;
 use std::env;
 use std::fmt::Debug;
 
@@ -15,10 +16,23 @@ pub enum AmmAction {
     Tick,
 }
 
+#[derive(Debug, Arbitrary, Clone, Copy)]
+pub enum LpAction {
+    BuyExactIn(u8),
+    SellExactIn(u8),
+    BuyExactOut(u8),
+    SellExactOut(u8),
+    InitializeLpPosition(usize), // Index of the LP position to initialize
+    AddLiquidity(u8),
+    RemoveLiquidity(u8),
+    CollectFees(usize),
+    Tick,
+}
+
 const TOTAL_BASE_SUPPLY: u64 = 1_073_000_000_000_000;
 const TOTAL_QUOTE_SUPPLY: u64 = 500_000_000_000_000_000;
 
-pub fn perform_action(amm: &mut Amm, action: AmmAction) {
+pub fn perform_amm_action(amm: &mut Amm, action: AmmAction) {
     let verbose = env::var("RUST_FUZZ_VERBOSE").is_ok();
     if verbose {
         println!("Action: {:?}", action);
@@ -294,6 +308,106 @@ pub fn perform_action(amm: &mut Amm, action: AmmAction) {
                 println!("Tick");
             }
             assert!(amm.maybe_update_snapshot(amm.get_slot() + 1));
+        }
+    }
+}
+
+pub fn perform_lp_action(amm: &mut Amm, lps: &mut [Option<LpPosition>], action: LpAction) {
+    match action {
+        LpAction::InitializeLpPosition(index) => {
+            let lp_index = index % lps.len();
+            let lp_position = &mut lps[lp_index];
+            if let None = lp_position {
+                let current_reward_factor = amm.reward_factor;
+                *lp_position = Some(LpPosition::new_with_reward_factor_snapshot(
+                    current_reward_factor,
+                ));
+            }
+        }
+        LpAction::AddLiquidity(r) => {
+            let pct = r as f64 / 255.;
+            let lp_index = r as usize % lps.len();
+
+            // Map r to a supply ranging from 0.001 to 1.0
+            let max_pct_of_supply = 0.001 + (r as f64 / 255.0) * 0.999;
+
+            let base_supply_max =
+                (TOTAL_BASE_SUPPLY.saturating_sub(amm.base_reserves) as f64) * max_pct_of_supply;
+            let quote_supply_max =
+                TOTAL_QUOTE_SUPPLY.saturating_sub(amm.quote_reserves) as f64 * max_pct_of_supply;
+
+            let base_amount = ((amm.base_reserves as f64 * pct) as u64).min(base_supply_max as u64);
+            let quote_amount =
+                ((amm.quote_reserves as f64 * pct) as u64).min(quote_supply_max as u64);
+
+            if let Some(lp_position) = &mut lps[lp_index] {
+                match lp_position.add_liquidity(
+                    amm.get_slot(),
+                    amm,
+                    base_amount,
+                    quote_amount,
+                    None,
+                ) {
+                    Ok(_) => {}
+                    Err(PlasmaStateError::VestingPeriodNotOver) => {
+                        // Check that a deposit already exists for this slot
+                        let current_slot = amm.get_slot();
+                        assert!(
+                            lp_position.pending_shares_to_vest.deposit_slot + amm.lp_vesting_window
+                                > current_slot
+                        );
+                    }
+                    Err(PlasmaStateError::BelowMinimumLpSharesRequired) => {}
+                    Err(e) => {
+                        panic!("unexpected error: {}", e);
+                    }
+                }
+            }
+        }
+        LpAction::RemoveLiquidity(r) => {
+            let lp_index = r as usize % lps.len();
+            let lp_position = &mut lps[lp_index];
+            let pct = r as f64 / 255.;
+            if let Some(lp_position) = lp_position {
+                match lp_position.remove_liquidity(
+                    amm.get_slot(),
+                    amm,
+                    (pct * lp_position.lp_shares as f64) as u64,
+                ) {
+                    Ok(_) => {}
+                    Err(PlasmaStateError::BelowMinimumWithdrawaRequired) => {}
+                    Err(e) => {
+                        panic!("unexpected error: {}", e);
+                    }
+                }
+            }
+        }
+        LpAction::CollectFees(index) => {
+            let lp_index = index % lps.len();
+            let lp_position = &mut lps[lp_index];
+            if let Some(lp_position) = lp_position {
+                match lp_position.collect_fees(amm.get_slot(), amm) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        panic!("unexpected error: {}", e);
+                    }
+                }
+            }
+        }
+        LpAction::BuyExactIn(r) => {
+            perform_amm_action(amm, AmmAction::BuyExactIn(r));
+        }
+        LpAction::SellExactIn(r) => {
+            perform_amm_action(amm, AmmAction::SellExactIn(r));
+        }
+        LpAction::BuyExactOut(r) => {
+            perform_amm_action(amm, AmmAction::BuyExactOut(r));
+        }
+        LpAction::SellExactOut(r) => {
+            perform_amm_action(amm, AmmAction::SellExactOut(r));
+        }
+        LpAction::Tick => {
+            perform_amm_action(amm, AmmAction::Tick);
         }
     }
 }

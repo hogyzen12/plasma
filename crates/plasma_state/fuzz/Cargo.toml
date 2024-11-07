@@ -17,8 +17,8 @@ tracing = { version = "0.1.37", features = ["log"] }
 path = ".."
 
 [[bin]]
-name = "fuzz_target_1"
-path = "fuzz_targets/fuzz_target_1.rs"
+name = "fuzz_lp_amm"
+path = "fuzz_targets/fuzz-lp-amm.rs"
 test = false
 doc = false
 bench = false

@@ -317,7 +317,7 @@ const setupMint = async (
       SystemProgram.transfer({
         fromPubkey: payer.publicKey,
         toPubkey: wSolAtaPayer,
-        lamports: GRADUATION_SOL_AMOUNT,
+        lamports: GRADUATION_SOL_AMOUNT * 2,
       })
     )
     .add(createSyncNativeInstruction(wSolAtaPayer))
@@ -326,7 +326,7 @@ const setupMint = async (
         mintKeypair.publicKey,
         mintAtaPayer,
         payer.publicKey,
-        GRADUATION_AMOUNT
+        GRADUATION_AMOUNT * 2
       )
     );
   await sendAndConfirmTransaction(c, initMintTx, [payer, mintKeypair], {
@@ -343,6 +343,7 @@ describe("Plasma AMM", async () => {
   let mintAtaPayer: PublicKey;
   let wSolAtaPayer: PublicKey;
   let poolKey: PublicKey;
+  let poolKeyCopy: PublicKey;
 
   before(async () => {
     console.log("Airdropping to payer");
@@ -428,6 +429,21 @@ describe("Plasma AMM", async () => {
       );
 
       poolKey = poolKeypair.publicKey;
+
+      // Create a copy of the pool to test sandwich attacks
+      const poolKeypairCopy = Keypair.generate();
+      await initPool(
+        c,
+        poolKeypairCopy,
+        payer,
+        mintPubkey,
+        mintAtaPayer,
+        wSolAtaPayer,
+        initialLpShares,
+        feeRecipients
+      );
+
+      poolKeyCopy = poolKeypairCopy.publicKey;
 
       try {
         const removeLiqTx = new Transaction().add(
@@ -770,14 +786,14 @@ describe("Plasma AMM", async () => {
             {
               plasmaProgram: PROGRAM_ID,
               logAuthority: LOG_AUTHORITY,
-              pool: poolKey,
+              pool: poolKeyCopy,
               trader: attacker.publicKey,
               baseAccount: mintAtaAttacker,
               quoteAccount: wSolAtaAttacker,
               baseVault: PublicKey.findProgramAddressSync(
                 [
                   Buffer.from("vault"),
-                  poolKey.toBuffer(),
+                  poolKeyCopy.toBuffer(),
                   mintPubkey.toBuffer(),
                 ],
                 PROGRAM_ID
@@ -785,7 +801,7 @@ describe("Plasma AMM", async () => {
               quoteVault: PublicKey.findProgramAddressSync(
                 [
                   Buffer.from("vault"),
-                  poolKey.toBuffer(),
+                  poolKeyCopy.toBuffer(),
                   NATIVE_MINT.toBuffer(),
                 ],
                 PROGRAM_ID
@@ -808,14 +824,14 @@ describe("Plasma AMM", async () => {
             {
               plasmaProgram: PROGRAM_ID,
               logAuthority: LOG_AUTHORITY,
-              pool: poolKey,
+              pool: poolKeyCopy,
               trader: victim.publicKey,
               baseAccount: mintAtaVictim,
               quoteAccount: wSolAtaVictim,
               baseVault: PublicKey.findProgramAddressSync(
                 [
                   Buffer.from("vault"),
-                  poolKey.toBuffer(),
+                  poolKeyCopy.toBuffer(),
                   mintPubkey.toBuffer(),
                 ],
                 PROGRAM_ID
@@ -823,7 +839,7 @@ describe("Plasma AMM", async () => {
               quoteVault: PublicKey.findProgramAddressSync(
                 [
                   Buffer.from("vault"),
-                  poolKey.toBuffer(),
+                  poolKeyCopy.toBuffer(),
                   NATIVE_MINT.toBuffer(),
                 ],
                 PROGRAM_ID
@@ -883,18 +899,22 @@ describe("Plasma AMM", async () => {
           {
             plasmaProgram: PROGRAM_ID,
             logAuthority: LOG_AUTHORITY,
-            pool: poolKey,
+            pool: poolKeyCopy,
             trader: attacker.publicKey,
             baseAccount: mintAtaAttacker,
             quoteAccount: wSolAtaAttacker,
             baseVault: PublicKey.findProgramAddressSync(
-              [Buffer.from("vault"), poolKey.toBuffer(), mintPubkey.toBuffer()],
+              [
+                Buffer.from("vault"),
+                poolKeyCopy.toBuffer(),
+                mintPubkey.toBuffer(),
+              ],
               PROGRAM_ID
             )[0],
             quoteVault: PublicKey.findProgramAddressSync(
               [
                 Buffer.from("vault"),
-                poolKey.toBuffer(),
+                poolKeyCopy.toBuffer(),
                 NATIVE_MINT.toBuffer(),
               ],
               PROGRAM_ID

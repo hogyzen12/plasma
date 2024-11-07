@@ -322,17 +322,15 @@ pub(crate) fn process_renounce_liqidity<'a, 'info>(
     let lp_position = try_from_bytes_mut::<LpPositionAccount>(&mut *lp_position_bytes)
         .map_err(|_| ProgramError::InvalidAccountData)?;
 
-    let allow_fee_withdrawal = match data[0] {
-        0 => false,
-        1 => true,
-        _ => {
-            msg!(
-                "Invalid data for RenounceLiquidity, expected bool to be 0 or 1, got {}",
-                data[0]
-            );
-            return Err(ProgramError::InvalidArgument);
-        }
-    };
+    if matches!(
+        LpPositionStatus::parse(lp_position.status)?,
+        LpPositionStatus::RenouncedWithBurnedFees | LpPositionStatus::RenouncedWithFeeWithdawal
+    ) {
+        msg!("Liquidity position has been renounced, cannot renounce again");
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    let allow_fee_withdrawal = bool::try_from_slice(data)?;
 
     lp_position.status = if allow_fee_withdrawal {
         LpPositionStatus::RenouncedWithFeeWithdawal as u64

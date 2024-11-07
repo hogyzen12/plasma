@@ -183,7 +183,40 @@ impl LimitOrderConfiguration {
 
 impl Amm {
     /// This function solves the closed-form solution for the size of the virtual limit order
-    /// in the pool.
+    /// in the pool. The virutal limit order is always priced at the snapshot price.
+    ///
+    /// The size of the limit order is determined by the following constraint:
+    ///
+    /// ```no_run
+    /// (quote_snapshot / base_snapshot) = (quote_reserves + ∆_quote) / (base_reserves + ∆_base)
+    /// ```
+    ///
+    /// Note that the signs of ∆_quote and ∆_base are always flipped.
+    ///
+    /// This means that the size of the limit order is set such that the new pool price
+    /// after the swap is equal to the price at the snapshot.
+    ///
+    /// Because we know the limit order is priced at the snapshot price, we can derive
+    /// the following equations:
+    /// -  ∆_base = -∆_quote * base_snapshot / quote_snapshot
+    /// -  ∆_quote = -∆_base * quote_snapshot / base_snapshot
+    ///
+    ///
+    /// We can then solve for ∆_base and ∆_quote after substituting the above equations. There are separate cases
+    /// for buy and sell
+    ///
+    /// - Limit order on the buy side (bid)
+    /// ```no_run
+    /// ∆_base = (base_snapshot * quote_reserves - quote_snapshot * base_reserves) / (2 * quote_snapshot)
+    /// ∆_quote = (base_snapshot * quote_reserves - quote_snapshot * base_reserves) / (2 * base_snapshot)
+    /// ```
+    ///
+    /// - Limit order on the sell side (ask)
+    /// ```no_run
+    /// ∆_base = (quote_snapshot * base_reserves - base_snapshot * quote_reserves) / (2 * quote_snapshot)
+    /// ∆_quote = (quote_snapshot * base_reserves - base_snapshot * quote_reserves) / (2 * base_snapshot)
+    /// ```
+    ///
     pub fn get_limit_order_size_in_base_and_quote(&self, side: Side) -> LimitOrderConfiguration {
         let quote_snapshot = self.quote_reserves_snapshot.upcast();
         let base_snapshot = self.base_reserves_snapshot.upcast();

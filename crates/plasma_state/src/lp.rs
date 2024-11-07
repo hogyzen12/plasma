@@ -52,7 +52,7 @@ pub struct LpPosition {
     pub withdrawable_lp_shares: u64,
     uncollected_fees: u64,
     collected_fees: u64,
-    pending_shares_to_vest: PendingSharesToVest,
+    pub pending_shares_to_vest: PendingSharesToVest,
 }
 
 impl LpPosition {

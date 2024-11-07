@@ -75,6 +75,16 @@ pub(crate) fn process_initialize_pool<'a, 'info>(
         "The protocol fee allocation is capped at 50% of the LP fee",
     )?;
 
+    assert_with_msg(
+        fee_recipients_params
+            .iter()
+            .map(|params| params.shares as u128)
+            .sum::<u128>()
+            < 10000,
+        ProgramError::InvalidArgument,
+        "The total shares must sum to less than 10000",
+    )?;
+
     // Create the base and quote vaults of this pool
     let rent = Rent::get()?;
     let mut bumps = vec![];

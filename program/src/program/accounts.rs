@@ -90,14 +90,28 @@ impl PoolAccount {
             .header
             .fee_recipients
             .iter()
-            .map(|r| r.shares)
-            .sum::<u64>();
+            .map(|r| r.shares as u128)
+            .sum::<u128>();
+
+        if total_shares > u64::MAX as u128 {
+            msg!("Total shares exceeds u64::MAX");
+            return Err(ProgramError::InvalidArgument);
+        }
 
         let mut accumulated_fees_all_recpients = 0;
 
         for recipient in self.header.fee_recipients.iter_mut() {
-            recipient.total_accumulated_quote_fees =
-                self.amm.cumulative_quote_protocol_fees * recipient.shares / total_shares;
+            recipient.total_accumulated_quote_fees = self
+                .amm
+                .cumulative_quote_protocol_fees
+                .checked_mul(recipient.shares)
+                .and_then(|total_unnormalized_fee| {
+                    total_unnormalized_fee.checked_div(total_shares as u64)
+                })
+                .ok_or_else(|| {
+                    msg!("Overflow while calculating total_accumulated_quote_fees");
+                    ProgramError::InvalidArgument
+                })?;
             accumulated_fees_all_recpients += recipient.total_accumulated_quote_fees;
         }
 
