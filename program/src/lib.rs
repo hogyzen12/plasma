@@ -32,8 +32,8 @@ pub mod plasma_log_authority {
     // The address of the PDA is 7KntgH9CuJFSdPFDZP7MtKJjCLi3BZYXaLm4oWJ3MAYs
     // The bump seed is stored in a variable called bump()
     declare_pda!(
-        "p1smVdFtyHV36TVnes2QXpRw3GHtpfEjCWqjRDKKkBh",
         "6GgSJLpfTJU8qtJEoYxJQav5jEiE7wZ45D7QyULJbgKT",
+        "p1smVdFtyHV36TVnes2QXpRw3GHtpfEjCWqjRDKKkBh",
         "log"
     );
 
