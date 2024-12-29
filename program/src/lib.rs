@@ -19,7 +19,7 @@ use solana_program::{
 
 pub const LEADER_SLOT_WINDOW: u64 = 4;
 
-declare_id!("5JgPhjG6RAckBX5yNdjoPinsexfHaQ4jnxbMbnaVX4iR");
+declare_id!("p1smVdFtyHV36TVnes2QXpRw3GHtpfEjCWqjRDKKkBh");
 
 /// This is a static PDA with seeds: [b"log"]
 /// If the program id changes, this will also need to be updated
@@ -32,8 +32,8 @@ pub mod plasma_log_authority {
     // The address of the PDA is 7KntgH9CuJFSdPFDZP7MtKJjCLi3BZYXaLm4oWJ3MAYs
     // The bump seed is stored in a variable called bump()
     declare_pda!(
-        "5nMvSZRR9Fgxmj4Xv2wnXrG67TMsVqG4jUN5188wgyfB",
-        "5JgPhjG6RAckBX5yNdjoPinsexfHaQ4jnxbMbnaVX4iR",
+        "p1smVdFtyHV36TVnes2QXpRw3GHtpfEjCWqjRDKKkBh",
+        "6GgSJLpfTJU8qtJEoYxJQav5jEiE7wZ45D7QyULJbgKT",
         "log"
     );
 
